@@ -112,7 +112,6 @@
 			$query->bindValue(++$index, $_GET['latitude']);
 			$query->bindValue(++$index, $_GET['longitude']);
 		}
-		echo $rawstatement;
 		deliverResponse($query); }
 
 	//main
