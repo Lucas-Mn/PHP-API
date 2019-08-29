@@ -1,5 +1,12 @@
 <?php
 
+	// $query = $db->prepare('SELECT * FROM venues');
+	// $query->execute();
+	// $result = $query->fetchAll(PDO::FETCH_ASSOC);
+	// var_dump($result);
+
+	//config vars
+
 	//util
 	function buildOrder(){
 		//defaults
@@ -62,12 +69,14 @@
 		if(isset($_GET['genre']))
 			$parameters['genres'] = "%".$_GET['genre']."%";
 
-		$rawstatement = "SELECT * FROM $table";
+		$rawstatement = "SELECT * FROM $table WHERE";
 
 		//if there are no query parameters, getAll()
-		$locational = (isset($_GET['latitude']) && isset($_GET['longitude']) && isset($_GET['range']))
-		if(!$locationl && count($parameters) <= 0)
+		$locational = (isset($_GET['latitude']) && isset($_GET['longitude']) && isset($_GET['range']));
+		if(!$locational && count($parameters) <= 0) {
 			getAll($db);
+			return;
+		}
 
 		//add locational parameters to statement if all of them are present
 		$paramand = ""; //we change this if the query is locational, because additional params will need an AND
@@ -108,7 +117,7 @@
 
 	//main
 	try {
-		$db = new PDO('mysql:host=*****;dbname=*****;port=****','*******','********');
+		$db = new PDO('mysql:host=*********;dbname=*******;port=****','*********','********');
 		$db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 		$query = $db->prepare("SET NAMES 'utf8'"); // necessary, otherwise everything breaks when selecting results with characters like é, á
 		$query->execute(); }
