@@ -1,13 +1,24 @@
 <?php
 
-	// $query = $db->prepare('SELECT * FROM venues');
-	// $query->execute();
-	// $result = $query->fetchAll(PDO::FETCH_ASSOC);
-	// var_dump($result);
+	//requirements
+	require('api_inserts.php');
 
-	//config vars
+	//config
+	function dfn(string $key, $value){
+		if(!defined($key)) define($key, $value);
+	}
+	dfn('DEBUG', false);
+	dfn('MAX_ARTISTS_PER_GIG', 10);
+	dfn('MAX_QUERY_RESULTS', 3);
+	dfn('DEFAULT_ORDER', 'ASC');
 
 	//util
+	class util{
+		public static function error(string $message){
+			echo('{"error":{"message":"'.$message.'"}}'); }
+	}
+	$util = new util();
+	
 	function buildOrder(){
 		//defaults
 		$orderby = "entry_time";
@@ -29,38 +40,47 @@
 		header('Content-Type: application/json; charset=utf-8');
 		echo json_encode($data); }
 
-	//inserts
-	function insertVenue($db, string $name, float $x, float $y){
-		$query = $db->prepare("INSERT INTO venues (name, pos_x, pos_y) VALUES('$name', $x, $y)");
-		$query->execute(); }
+	function action_gigs_in_venue(){
+		global $db;
+		global $util;
+
+		if(!isset($_GET['id']))
+			return $util::error("no id provided");
+		$filter = "";
+		if(isset($_GET['filter']))
+			switch($_GET['filter']){
+				case 'upcoming':
+					$filter = "AND start_time > NOW()"; break;
+				case 'past':
+					$filter ="AND start_time < NOW()"; break; }
+
+		$limit = MAX_QUERY_RESULTS;
+		if(isset($_GET['limit']) && $_GET['limit'] < MAX_QUERY_RESULTS)
+			$limit = $_GET['limit'];
+		$query = $db->prepare("SELECT * FROM gigs WHERE venue_id = :id $filter ORDER BY start_time ASC LIMIT :limit;");
+		$query->bindValue(':id', $_GET['id'], PDO::PARAM_INT);
+		$query->bindValue(':limit', $limit, PDO::PARAM_INT);
+		deliverResponse($query);
+	}
 
 	//queries
-	function getById($db){
-		$table = $_GET['table'];
-		$statement = "SELECT * FROM $table WHERE id = ?;";
-		$query = $db->prepare($statement);
-		$query->bindValue(1, $_GET['id']);
-		deliverResponse($query); }
-
-	function getAll($db){
-		$table = $_GET['table'];
-		$query = $db->prepare("SELECT * FROM $table".buildOrder().";");
-		deliverResponse($query); }
-
 	function query($db){
+		global $util;
+
+		//action or query?
+		if(isset($_GET['action']))
+			switch($_GET['action']){
+				case ('gigsinvenue'):
+					return action_gigs_in_venue();
+				default:
+					return $util::error("invalid action"); }
+
 		if(!isset($_GET['table'])){
 			echo "no table selected";
-			return; }
-		else
-			$table = $_GET['table'];
+			return; }	
 
-		if(isset($_GET['id'])) {
-			getById($db);
-			return; }
-
-		if(isset($_GET['all'])){
-			getAll($db);
-			return; }
+		//defaults
+		$limit = MAX_QUERY_RESULTS;
 
 		//get parameters
 		$parameters = array();
@@ -68,15 +88,16 @@
 			$parameters['name'] = "%".$_GET['name']."%";
 		if(isset($_GET['genre']))
 			$parameters['genres'] = "%".$_GET['genre']."%";
+		if(isset($_GET['id'])){
+			$parameters['id'] = "%".$_GET['id']."%";
+			$limit = 1; }
 
-		$rawstatement = "SELECT * FROM $table WHERE";
+		$rawstatement = "SELECT * FROM ".$_GET['table'];
 
 		//if there are no query parameters, getAll()
 		$locational = (isset($_GET['latitude']) && isset($_GET['longitude']) && isset($_GET['range']));
-		if(!$locational && count($parameters) <= 0) {
-			getAll($db);
-			return;
-		}
+		if($locational || count($parameters) > 0) {
+			$rawstatement = $rawstatement." WHERE"; }
 
 		//add locational parameters to statement if all of them are present
 		$paramand = ""; //we change this if the query is locational, because additional params will need an AND
@@ -90,12 +111,12 @@
 			$rawstatement = $rawstatement.$paramand." $key LIKE ?";
 			$paramand = " AND"; }
 
-		$rawstatement = $rawstatement.buildOrder().";";
+		$rawstatement = $rawstatement.buildOrder()." LIMIT ?;";
 
 		//prepare and deliver statement
 		$query = $db->prepare($rawstatement);
 		$index = 0; //index for parameters
-		if($locational){
+		if($locational){ //bind location parameters
 			$latitude = $_GET['latitude'];
 			$longitude = $_GET['latitude'];
 			$range = $_GET['range'];
@@ -104,19 +125,20 @@
 			$query->bindValue(3, $longitude - $range, PDO::PARAM_STR);
 			$query->bindValue(4, $longitude + $range, PDO::PARAM_STR);
 			$index = 4; }
-		foreach($parameters as $value){
+		foreach($parameters as $value){ //bind query paramaters
 			$query->bindValue(++$index, $value, PDO::PARAM_STR); }
 
+		//bind order
 		//messy, might want to make more elegant
 		if($locational && isset($_GET['orderby']) && $_GET['orderby'] == 'proximity'){
 			$query->bindValue(++$index, $_GET['latitude']);
-			$query->bindValue(++$index, $_GET['longitude']);
-		}
+			$query->bindValue(++$index, $_GET['longitude']); }
+		$query->bindValue(++$index, $limit, PDO::PARAM_INT); //bind LIMIT
 		deliverResponse($query); }
 
 	//main
 	try {
-		$db = new PDO('mysql:host=*********;dbname=*******;port=****','*********','********');
+		$db = new PDO('mysql:host=*********;dbname=*********;port=****','*********','************');
 		$db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 		$query = $db->prepare("SET NAMES 'utf8'"); // necessary, otherwise everything breaks when selecting results with characters like é, á
 		$query->execute(); }
@@ -125,6 +147,8 @@
 
 	if($_GET)
 		query($db);
-	else echo "lol no get";
+	else { 
+		echo "lol no get";
+	}
 
 ?>
