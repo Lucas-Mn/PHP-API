@@ -2,8 +2,12 @@
 
 	//requirements
 	require('api_inserts.php');
+	require('api_util.php');
+	require('api_config.php');
 
 	//config
+	header('Content-Type: application/json; charset=utf-8');
+	
 	function dfn(string $key, $value){
 		if(!defined($key)) define($key, $value);
 	}
@@ -15,9 +19,10 @@
 	//util
 	class util{
 		public static function error(string $message){
-			echo('{"error":{"message":"'.$message.'"}}'); }
+			http_response_code(500);
+			header('Content-Type: application/json; charset=utf-8');
+			echo $message; }
 	}
-	$util = new util();
 	
 	function buildOrder(){
 		//defaults
@@ -37,6 +42,7 @@
 	function deliverResponse($query){
 		$query->execute();
 		$data = $query->fetchAll(PDO::FETCH_ASSOC);
+		if(count($data) == 1) $data = $data[0];
 		header('Content-Type: application/json; charset=utf-8');
 		echo json_encode($data); }
 
@@ -138,17 +144,15 @@
 
 	//main
 	try {
-		$db = new PDO('mysql:host=*********;dbname=*********;port=****','*********','************');
+		$db = new PDO('mysql:host='.HOST_ADDRESS.';dbname='.DATABASE_NAME.';port='.PORT, DATABASE_USERNAME, DATABASE_PASSWORD);
 		$db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 		$query = $db->prepare("SET NAMES 'utf8'"); // necessary, otherwise everything breaks when selecting results with characters like é, á
 		$query->execute(); }
 	catch(PDOException $Exception) {
 		echo($Exception->getMessage()); }
 
-	if($_GET)
+	if ($_SERVER['REQUEST_METHOD'] == 'GET') 
 		query($db);
-	else { 
-		echo "lol no get";
-	}
-
+	else if($_SERVER['REQUEST_METHOD'] == 'POST')
+		insert();
 ?>

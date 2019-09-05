@@ -4,36 +4,51 @@
 	function debug(string $message){
 		if(DEBUG) echo $message."<br>"; }
 
-	function error(string $message){
-		echo("ERROR: ".$message."<br>"); }
+	function insert(){
+		if(!isset($_POST['table']))
+			return error("no table provided");
+		switch($_POST['table']){
+			case 'gigs':
+				insertGigPost();
+				break;
+			default:
+				return error("invalid table"); }
+	}
+
+	function insertGigPost(){
+		if(!isset($_POST['name']) || strlen($_POST['name']) < 1)
+			return error("no name provided");
+		if(!isset($_POST['venue_id']))
+			return error("no venue_id provided");
+		insertGig($_POST['name'], $_POST['description'], $_POST['venue_id'], $_POST['artist_ids'], $_POST['schedules']);
+	}
 
 	//$schedules - array of associative arrays with keys artist_id, start_time
 	//MUST BE ORDERED BY START TIME, ASCENDING
-	function insertGig(string $name, string $description, $venue_id, array $schedules){
+	function insertGig(string $name, string $description, $venue_id, array $artist_ids, array $schedules){
 		debug("insertGig: ");
 
 		global $db;
-		global $util;
-		
+
 		//get venue
 		$query = $db->prepare("SELECT * FROM venues WHERE id = ? LIMIT 1");
 		$query->bindValue(1, $venue_id);
 		$query->execute();
 		$fetch = $query->fetchAll(PDO::FETCH_ASSOC);
 		if(count($fetch)<=0)
-			return $util::error("Invalidad venue ID");
+			return error("Invalidad venue ID");
 		$venue = $fetch[0];
 		debug("-got venue ".$venue["name"]);
 
-		//get artists
-		//save all ids to array
-		$artist_ids = array();
-		foreach($schedules as $x) {
-			array_push($artist_ids, $x["artist_id"]);
-		}
-		//check that ids were provided
+		//check parameter errors
 		if(count($artist_ids)<=0)
-			return $util::error("no artist ids provided");
+			return error("no artist ids provided");
+		if(count($schedules)<=0)
+			return error("no schedules providad");
+		if(count($artist_ids) != count($schedules))
+			return error("amount of artist ids and schedules aren't equal");
+		if(count($artist_ids)>MAX_ARTISTS_PER_GIG)
+			return error("too many artists; max is ".MAX_ARTISTS_PER_GIG);
 		//building the query
 		$statement = "SELECT * FROM artists WHERE id IN (?";
 		//add parameter for each artist
@@ -54,9 +69,6 @@
 		//missing IDs
 		if(count($artists) != count($schedules))
 			return $util::error("one or more invalid artist IDs");
-		if(count($artists)>MAX_ARTISTS_PER_GIG)
-			return $util::error("too many artists; max is ".MAX_ARTISTS_PER_GIG);
-
 		//build genres label
 		$genre_array = array();
 		foreach($artists as $x)
@@ -77,7 +89,7 @@
 		$query->bindValue(':longitude', $venue['longitude']);
 		$query->bindValue(':description', $description);
 		$query->bindValue(':genres', $genres);
-		$query->bindValue(':start_time', $schedules[0]['start_time']);
+		$query->bindValue(':start_time', $schedules[0]);
 		$query->bindValue(':venue_id', $venue_id, PDO::PARAM_INT);
 		$query->execute();
 		//insert schedules
@@ -91,11 +103,17 @@
 		$query = $db->prepare($statement);
 		//bind parameters
 		$index = 0;
-		foreach($schedules as $x){ //bind parameters for each row
+		for($i = 0; $i < count($schedules); ++$i){ //bind parameters for each row
 			$query->bindValue(++$index, $gig_id, PDO::PARAM_INT);
-			$query->bindValue(++$index, $x['artist_id']);
-			$query->bindValue(++$index, $x['start_time']); }
+			$query->bindValue(++$index, $artist_ids[$i]);
+			$query->bindValue(++$index, $schedules[$i]); }
+		$inserted_id = $db->lastInsertId();
 		$query->execute();
+
+		//get inserted item
+		$query = $db->prepare("SELECT * FROM gigs WHERE id = :id;");
+		$query->bindValue(':id', $inserted_id, PDO::PARAM_INT);
+		deliverResponse($query);
 	}
 
 ?>
